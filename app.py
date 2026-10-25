@@ -258,7 +258,7 @@ def gpu_session(slot: int, lease_id: str, seconds: int, park_path: str = "", res
             }
             continue
         started = time.monotonic()
-        yield {"type": "gen_start", "turn": cmd["turn"], "remaining": deadline - started}
+        yield {"type": "gen_start", "turn": cmd["turn"], "remaining": (deadline - started) if deadline is not None else None}
         try:
             with torch.inference_mode():
                 output = pipe.inference(
@@ -294,7 +294,7 @@ def gpu_session(slot: int, lease_id: str, seconds: int, park_path: str = "", res
             "end": int(meta.get("generated_pixel_frames", 0)),
             "jpegs": _encode_jpegs(video),
             "gen_seconds": time.monotonic() - started,
-            "remaining": deadline - time.monotonic(),
+            "remaining": (deadline - time.monotonic()) if deadline is not None else None,
         }
     _reset_pipeline()
 
@@ -840,7 +840,7 @@ def _drive(sess: Session, restore_path: str = ""):
                 except queue.Empty:
                     break
             kind = ev["type"]
-            if "remaining" in ev:
+            if "remaining" in ev and ev["remaining"] is not None:
                 sess.remaining = float(ev["remaining"])
             if kind == "ready":
                 sess.ready = True
