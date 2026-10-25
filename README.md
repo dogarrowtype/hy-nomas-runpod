@@ -161,6 +161,7 @@ optionally bump the digest in the RunPod template.
 
 | Symptom | Fix |
 |---|---|
+| `Temporary failure in name resolution` during weight staging | Pod booted before its network was ready. The entrypoint now waits for `huggingface.co` DNS (~2 min) and retries each download 5× with backoff. If it *still* fails, the pod has no outbound network — restart or redeploy |
 | CI fails on `torch==2.11.0` pin | Use newest cu13x torch/torchvision (see step 3) |
 | Entrypoint: `PE_API_KEY is not set` | Add it to the template/pod env — it has no default |
 | Entrypoint: `… is sm_80 … requires sm_89+` | A100/A40 class GPU — redeploy on Ada/Hopper/Blackwell |

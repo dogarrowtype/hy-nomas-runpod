@@ -74,7 +74,50 @@ if vram_gib < 64:
     )
 PY
 
-# --- 4. Weight staging (idempotent; optional HF_TOKEN honored by hf) ---------
+# --- 4. Weight staging (idempotent; optional HF_TOKEN honored by huggingface_hub)
+# Pods can boot before DNS/network is fully up — wait for name resolution first,
+# then retry downloads with backoff instead of dying on the first hiccup.
+log "waiting for outbound network (huggingface.co)…"
+for i in $(seq 1 24); do
+  if python -c "import socket; socket.getaddrinfo('huggingface.co', 443)" 2>/dev/null; then
+    log "network is up"
+    break
+  fi
+  if [ "${i}" -eq 24 ]; then
+    echo "ERROR: huggingface.co still unresolvable after ~2 minutes — pod has no" >&2
+    echo "       outbound network. Restart the pod or check RunPod status." >&2
+    exit 1
+  fi
+  sleep 5
+done
+
+hf_retry() {
+  # $1 = repo id, remaining args = allow_patterns (empty = whole repo)
+  local repo="$1"; shift
+  python - "${repo}" "$@" <<'PY'
+import sys
+import time
+
+from huggingface_hub import snapshot_download
+
+repo = sys.argv[1]
+patterns = sys.argv[2:] or None  # NOTE: passing each pattern as its own argv keeps
+                                 # this immune to CLI-style --include parsing bugs;
+                                 # a bare "*" would never reach a URL as %2A.
+
+for attempt in range(1, 6):
+    try:
+        path = snapshot_download(repo, allow_patterns=patterns)
+        print(f"[nomas-entrypoint] cached {repo} at {path}", flush=True)
+        sys.exit(0)
+    except Exception as exc:
+        print(f"[nomas-entrypoint] download of {repo} failed (attempt {attempt}/5): {exc}", flush=True)
+        time.sleep(10 * attempt)
+
+sys.exit(f"ERROR: downloading {repo} failed after 5 attempts.")
+PY
+}
+
 DIT_FILE="DiT/distilled_int8/diffusion_pytorch_model_ema_0_995_int8.safetensors"
 VAE_FILE="VAE/PixelUMM_FT/diffusion_pytorch_model.safetensors"
 
@@ -90,7 +133,7 @@ then
   log "Hy-Nomas DiT/VAE weights already cached — skipping download"
 else
   log "downloading Hy-Nomas DiT/VAE weights (first boot on a fresh volume only)"
-  hf download tencent/Hy-Nomas --include "DiT/distilled_int8/*" "VAE/PixelUMM_FT/*"
+  hf_retry tencent/Hy-Nomas "DiT/distilled_int8/*" "VAE/PixelUMM_FT/*"
 fi
 
 if python - <<'PY'
@@ -108,7 +151,7 @@ then
   log "Qwen2.5-VL-7B-Instruct already cached — skipping download"
 else
   log "downloading Qwen/Qwen2.5-VL-7B-Instruct (first boot on a fresh volume only)"
-  hf download Qwen/Qwen2.5-VL-7B-Instruct
+  hf_retry Qwen/Qwen2.5-VL-7B-Instruct
 fi
 
 # --- 5. Launch ----------------------------------------------------------------
