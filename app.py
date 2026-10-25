@@ -41,8 +41,7 @@ _res = os.environ.get("NOMAS_RESOLUTION", "1280x720").lower().replace("×", "x")
 WIDTH, HEIGHT = int(_res[0]), int(_res[1])
 GPU_SIZE = os.environ.get("NOMAS_GPU_SIZE", "xlarge")
 MAX_SESSIONS = int(os.environ.get("NOMAS_MAX_SESSIONS", "4"))
-SESSION_CHOICES = {"quick": 60, "standard": 90, "long": 150}
-LEASE_MARGIN = 30
+SESSION_SECONDS = int(os.environ.get("NOMAS_SESSION_SECONDS", "0"))  # 0 = no time limit; session runs until you leave or stop it
 TURN_SECONDS = (3, 4, 5, 6)
 JPEG_QUALITY = 88
 RETAIN_SECONDS = 1800
@@ -197,10 +196,6 @@ def _encode_jpegs(video: np.ndarray) -> List[bytes]:
     ]
 
 
-def _lease_duration(slot, lease_id, seconds, *args, **kwargs):
-    return int(seconds) + LEASE_MARGIN
-
-
 WORLD_MODULES = {"vae": pipe.vae, "decoder": pipe.vae.decoder, "transformer": pipe.transformer, "text_encoder": pipe.text_encoder}
 
 
@@ -222,11 +217,11 @@ def gpu_session(slot: int, lease_id: str, seconds: int, park_path: str = "", res
             yield {"type": "restore_failed", "message": str(exc)}
             return
         yield {"type": "restored", "bytes": nbytes, "seconds": time.monotonic() - started}
-    deadline = time.monotonic() + seconds
-    yield {"type": "ready", "remaining": seconds}
+    deadline = time.monotonic() + seconds if seconds > 0 else None
+    yield {"type": "ready", "remaining": seconds if seconds > 0 else None}
     while True:
         now = time.monotonic()
-        if now >= deadline:
+        if deadline is not None and now >= deadline:
             if park_path:
                 started = time.monotonic()
                 try:
@@ -241,7 +236,7 @@ def gpu_session(slot: int, lease_id: str, seconds: int, park_path: str = "", res
         try:
             cmd = commands.get(timeout=0.5)
         except queue.Empty:
-            yield {"type": "tick", "remaining": deadline - now}
+            yield {"type": "tick", "remaining": (deadline - now) if deadline is not None else None}
             continue
         if cmd.get("lease") != lease_id:
             continue
@@ -723,7 +718,7 @@ def run_session(world: str = "{}", options: str = "{}") -> str:
     except json.JSONDecodeError:
         yield json.dumps({"type": "error", "message": "Malformed request."})
         return
-    seconds = SESSION_CHOICES.get(str(o.get("length")), SESSION_CHOICES["standard"])
+    seconds = SESSION_SECONDS  # public-length picker removed; private use = no time limit unless NOMAS_SESSION_SECONDS is set
     if o.get("resume"):
         yield from _resume_session(str(o["resume"]), o.get("turn") or {}, seconds)
         return
@@ -742,7 +737,7 @@ def run_session(world: str = "{}", options: str = "{}") -> str:
     slot = _claim_slot()
     if slot is None:
         yield json.dumps(
-            {"type": "error", "message": f"All {MAX_SESSIONS} live worlds are busy right now. Try again in a minute."}
+            {"type": "error", "message": f"All {MAX_SESSIONS} session slots are in use (raise NOMAS_MAX_SESSIONS for more). Try again in a minute."}
         )
         return
     token = secrets.token_urlsafe(18)
@@ -794,7 +789,7 @@ def _resume_session(token: str, turn_req: Dict[str, Any], seconds: int):
     slot = _claim_slot()
     if slot is None:
         yield json.dumps({"type": "ended", "reason": "busy", "resumable": True,
-                          "message": f"All {MAX_SESSIONS} live worlds are busy right now. Try again in a minute."})
+                          "message": f"All {MAX_SESSIONS} session slots are in use (raise NOMAS_MAX_SESSIONS for more). Try again in a minute."})
         return
     sess.slot, sess.lease_id, sess.seconds = slot, secrets.token_hex(8), seconds
     sess.alive, sess.ready, sess.finished_at = True, False, None

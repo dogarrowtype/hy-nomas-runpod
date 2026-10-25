@@ -115,7 +115,8 @@ Public package = **no registry credentials** needed in the RunPod template.
 | `PE_OPENING_MODELS` | yes* | Space defaults | Plain provider model IDs for the opening prompt, comma-separated. *The built-in defaults carry HF `:provider` suffixes that break on other providers. |
 | `PE_TURN_MODELS` | yes* | Space defaults | Same, for per-turn enhancement. |
 | `NOMAS_RESOLUTION` | no | `1280x720` | `WIDTHxHEIGHT`. Use `832x480` to restore the Space's shapes (env-only, no rebuild). |
-| `NOMAS_MAX_SESSIONS` | no | `4` | Concurrent world sessions. Set `1`–`2` on <64 GB GPUs. |
+| `NOMAS_MAX_SESSIONS` | no | `4` | Concurrent world sessions — a VRAM safety cap, not a sharing limit (each live world holds KV cache). Set `1`–`2` on <64 GB GPUs. |
+| `NOMAS_SESSION_SECONDS` | no | `0` (no limit) | Per-world session duration. `0` = a world stays live until you leave/stop it. Set >0 to re-enable time-limited sessions. |
 | `TORCHINDUCTOR_CACHE_DIR` | recommended | — | **Set to `/workspace/inductor-cache`.** There is no bundled compile cache (the Space's 480p/H200 megacache can't hit on sm_120/720p, so it was dropped); persisting Inductor's cache on the volume means only the *very first* turn on a *fresh* volume pays the compile time — pod recreates stay warm. |
 | `HF_TOKEN` | no | — | Only if a weight repo turns out to be gated. |
 | `NOMAS_GPU_SIZE` | no | `xlarge` | Selects the compile-cache filename (currently always "missing" — see above). |
@@ -161,6 +162,7 @@ optionally bump the digest in the RunPod template.
 
 | Symptom | Fix |
 |---|---|
+| First turn: `Failed to find C compiler` | Triton/Inductor JIT-builds a C extension at runtime; the image needs `build-essential python3-dev` (present in the current Dockerfile). Rebuild + redeploy |
 | `Temporary failure in name resolution` during weight staging | Pod booted before its network was ready. The entrypoint now waits for `huggingface.co` DNS (~2 min) and retries each download 5× with backoff. If it *still* fails, the pod has no outbound network — restart or redeploy |
 | CI fails on `torch==2.11.0` pin | Use newest cu13x torch/torchvision (see step 3) |
 | Entrypoint: `PE_API_KEY is not set` | Add it to the template/pod env — it has no default |
@@ -174,9 +176,12 @@ optionally bump the digest in the RunPod template.
 ## What changed vs. the original Space
 
 - `app.py`: `import spaces` / `@spaces.GPU` removed; HF `get_token()` fallback removed
-  (`PE_API_KEY` only); resolution read from `NOMAS_RESOLUTION` (default `1280x720`)
-- `index.html`: six render constants 832/480 → 1280/720 (16:9); ZeroGPU quota copy and
-  handshake removed
+  (`PE_API_KEY` only); resolution read from `NOMAS_RESOLUTION` (default `1280x720`);
+  **public session limits removed** — the quick/standard/long time leases are gone,
+  sessions run until you leave them (`NOMAS_SESSION_SECONDS` can restore a time limit)
+- `index.html`: six render constants 832/480 → 1280/720 (16:9); ZeroGPU quota copy,
+  handshake, the GPU-time countdown ticker, and the session-length picker removed;
+  remaining copy talks about "session slots", not GPUs/quota
 - Added: `Dockerfile`, `docker/entrypoint.sh`, `.github/workflows/build-image.yml`,
   `.dockerignore`, `.gitignore`
 - Removed: the Space's `compile_cache/` megacache (H200/480p artifacts double-miss on

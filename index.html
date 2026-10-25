@@ -177,12 +177,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border-r
 .stage-head { display: flex; align-items: center; gap: var(--spacing-lg); flex-wrap: wrap; }
 .stage-head h2 { margin: 0; font-size: var(--text-xxl); font-weight: var(--prose-header-text-weight); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip { font-size: var(--text-sm); padding: 2px 8px; border-radius: var(--radius-sm); background: var(--color-accent-soft); color: var(--body-text-color); border: 1px solid var(--border-color-primary); }
-.clock { margin-left: auto; display: flex; align-items: center; gap: var(--spacing-md); font-size: var(--text-sm); color: var(--body-text-color-subdued); }
-.clock svg { width: 30px; height: 30px; transform: rotate(-90deg); }
-.clock .track { stroke: var(--border-color-primary); }
-.clock .bar { stroke: var(--color-accent); stroke-linecap: round; transition: stroke-dashoffset .9s linear; }
-.clock.low .bar { stroke: #ef4444; }
-.clock b { color: var(--body-text-color); font-family: var(--font-mono); font-weight: 500; display: block; font-size: var(--text-lg); }
+.clock { display: none; }
 
 .player { padding: 0; overflow: hidden; }
 .viewport { position: relative; width: 100%; max-width: calc((100vh - 300px) * 1280 / 720); min-width: min(100%, 480px); margin: 0 auto; }
@@ -326,7 +321,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border-r
     <nav>
       <a href="https://huggingface.co/tencent/Hy-Nomas" target="_blank" rel="noopener">Model</a>
       <a href="https://github.com/Tencent-Hunyuan/Hy-Nomas" target="_blank" rel="noopener">Code</a>
-      <span class="status" id="slots"><span class="dot"></span><span>Checking GPUs…</span></span>
+      <span class="status" id="slots"><span class="dot"></span><span>Checking…</span></span>
     </nav>
   </div></header>
 
@@ -358,13 +353,6 @@ kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border-r
         <details class="accordion">
           <summary>Advanced settings</summary>
           <div class="acc-body">
-            <div><span class="label-text">GPU session</span>
-              <div class="radio" id="length">
-                <button type="button" data-v="quick" aria-pressed="false">Quick <small>1 min</small></button>
-                <button type="button" data-v="standard" aria-pressed="true">Standard <small>1.5 min</small></button>
-                <button type="button" data-v="long" aria-pressed="false">Long <small>2.5 min</small></button>
-              </div>
-            </div>
             <div><span class="label-text">Turn length</span>
               <div class="radio" id="turnlen">
                 <button type="button" data-v="3" aria-pressed="false">3s</button>
@@ -401,10 +389,6 @@ kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border-r
           <button class="btn sm neutral" id="leave" title="Leave this world">← Worlds</button>
           <h2 id="world-title">World</h2>
           <span class="chip" id="world-persp">Follow</span>
-          <div class="clock" id="clock" title="GPU time left in this session">
-            <svg viewBox="0 0 36 36"><circle class="track" cx="18" cy="18" r="15" fill="none" stroke-width="4"/><circle class="bar" id="clock-bar" cx="18" cy="18" r="15" fill="none" stroke-width="4" stroke-dasharray="94.25" stroke-dashoffset="0"/></svg>
-            <div><b id="clock-text">--:--</b>GPU time left</div>
-          </div>
         </div>
 
         <div class="block player">
@@ -423,7 +407,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border-r
                 <div class="inner">
                   <h4 id="forming-title">Opening a world</h4>
                   <ol class="steps" id="steps-list">
-                    <li data-s="gpu"><span class="ico"></span><span id="gpu-step">Reserving a GPU</span></li>
+                    <li data-s="gpu"><span class="ico"></span><span id="gpu-step">Opening your world</span></li>
                     <li data-s="direct"><span class="ico"></span>Directing the opening shot</li>
                     <li data-s="render"><span class="ico"></span><span id="render-step">Rendering the first seconds</span></li>
                   </ol>
@@ -438,7 +422,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 5px; border-r
               <div class="ov ended hidden" id="ended">
                 <div>
                   <h4 id="ended-title">Session complete</h4>
-                  <p id="ended-text">Your GPU time for this world is up. Download the journey or open a new world.</p>
+                  <p id="ended-text">This world has ended. Download the journey or open a new world.</p>
                   <div class="row">
                     <button class="btn primary hidden" id="ended-keep">Keep going</button>
                     <a class="btn secondary" id="ended-dl" href="#" download>Download MP4</a>
@@ -591,7 +575,7 @@ const els = {
   screen: $("screen"), ambient: $("ambient"), screenbox: $("screenbox"), forming: $("forming"),
   pill: $("pill"), pillText: $("pill-text"), pillMeter: $("pill-meter"), live: $("live"), liveText: $("live-text"), golive: $("golive"),
   timeline: $("timeline"), playhead: $("playhead"), tc: $("tc"), play: $("play"),
-  notes: $("notes"), notesCount: $("notes-count"), clock: $("clock"), clockBar: $("clock-bar"), clockText: $("clock-text"),
+  notes: $("notes"), notesCount: $("notes-count"),
   say: $("say"), sayForm: $("say-form"), saySend: $("say-send"), chips: $("chips"),
   tabSay: $("tab-say"), tabMove: $("tab-move"), paneSay: $("pane-say"), paneMove: $("pane-move"),
   undo: $("undo"), download: $("download"), ended: $("ended"), keyhud: $("keyhud"),
@@ -602,7 +586,7 @@ const ctx = els.screen.getContext("2d");
 const actx = els.ambient.getContext("2d");
 const mctx = els.minimap.getContext("2d");
 
-const prefs = { perspective: "third-person follow", length: "standard", turnlen: "4", steps: "8" };
+const prefs = { perspective: "third-person follow", turnlen: "4", steps: "8" };
 let selectedWorld = null;
 let client = null;
 
@@ -627,7 +611,6 @@ function setSeg(id, key, value) {
   for (const x of $(id).querySelectorAll("button")) x.setAttribute("aria-pressed", String(x.dataset.v === value));
 }
 bindSeg("perspective", "perspective");
-bindSeg("length", "length");
 bindSeg("turnlen", "turnlen");
 bindSeg("steps", "steps");
 
@@ -706,7 +689,7 @@ function resetStage() {
   for (const li of document.querySelectorAll("#steps-list li")) li.className = "";
   $("forming-scene").textContent = "";
   $("forming-title").textContent = "Opening a world";
-  $("gpu-step").textContent = "Reserving a GPU";
+  $("gpu-step").textContent = "Opening your world";
   els.say.value = "";
   resetRecording();
   renderTimeline(); renderNotes(); updateControls();
@@ -739,7 +722,7 @@ async function enterWorld() {
   renderChips();
   showView("stage");
   setStep("gpu", "active"); setStep("direct", "active");
-  const options = { length: prefs.length, turn_seconds: Number(prefs.turnlen), steps: Number(prefs.steps) };
+  const options = { turn_seconds: Number(prefs.turnlen), steps: Number(prefs.steps) };
   if (els.seed.value !== "") options.seed = Number(els.seed.value);
   els.enter.disabled = false;
   const job = client.submit("/run_session", { world: JSON.stringify(S.world), options: JSON.stringify(options) });
@@ -763,7 +746,7 @@ async function consume(job) {
       } else if (msg.type === "status") {
         if (msg.stage === "pending" && !S.token) {
           const pos = msg.position;
-          $("gpu-step").textContent = pos != null && pos > 0 ? `In line for a world (position ${pos + 1})` : "Reserving a GPU";
+          $("gpu-step").textContent = pos != null && pos > 0 ? `Waiting for a session slot (position ${pos + 1})` : "Opening your world";
         } else if (msg.stage === "error" && !S.ended) {
           endSession("error", msg.message || "The session stopped unexpectedly.");
         }
@@ -790,7 +773,7 @@ function handle(ev) {
       return;
     case "ready":
       S.ready = true; S.resuming = false; setRemaining(ev.remaining);
-      setStep("gpu", "done"); $("gpu-step").textContent = "GPU reserved";
+      setStep("gpu", "done"); $("gpu-step").textContent = "World is live";
       updateControls();
       return;
     case "tick":
@@ -956,13 +939,6 @@ function frameLoop(now) {
     els.playhead.style.left = playheadX() + "px";
     els.tc.textContent = `${fmt(S.pos / FPS)} / ${fmt(S.total / FPS)}`;
   }
-  if (S.remainingAt) {
-    const left = S.ended ? 0 : Math.max(0, S.remaining - (now - S.remainingAt) / 1000);
-    els.clockText.textContent = fmt(left);
-    const frac = S.sessionSeconds ? left / S.sessionSeconds : 0;
-    els.clockBar.style.strokeDashoffset = String(94.25 * (1 - frac));
-    els.clock.classList.toggle("low", left < 30);
-  }
   updateRecording(now, dt);
   updatePillMeter(now);
   requestAnimationFrame(frameLoop);
@@ -980,7 +956,7 @@ function activeTurn() { return S.turns.find((t) => ["directing", "queued", "gene
 function updatePill() {
   const t = activeTurn();
   if (!t && S.parked && S.firstFrames) {
-    els.pillText.innerHTML = "<b>Paused</b> <span>Your next Say or Move opens a new GPU session.</span>";
+    els.pillText.innerHTML = "<b>Paused</b> <span>Your next Say or Move opens a new session.</span>";
     els.pill.classList.remove("off");
     els.pill.querySelector(".spinner").style.visibility = "hidden";
     els.pillMeter.classList.add("hidden");
@@ -990,7 +966,7 @@ function updatePill() {
   els.pillMeter.classList.remove("hidden");
   if (!t || !S.firstFrames) { els.pill.classList.add("off"); return; }
   const what = t.kind === "move" ? "your camera move" : `“${t.label}”`;
-  const stage = { waiting: "Waiting in line", directing: "Directing", queued: S.ready ? "Rolling camera" : "Reserving a GPU", generating: "Rendering" }[t.status];
+  const stage = { waiting: "Waiting in line", directing: "Directing", queued: S.ready ? "Rolling camera" : "Opening your world", generating: "Rendering" }[t.status];
   const queued = S.turns.filter((x) => ["waiting", "directing", "queued", "generating"].includes(x.status)).length;
   els.pillText.innerHTML = `<b>${stage}</b> <span></span>`;
   els.pillText.querySelector("span").textContent = what + (queued > 1 ? ` · ${queued - 1} more queued` : "");
@@ -1146,7 +1122,7 @@ async function postTurn(body) {
 }
 function resumeWith(body) {
   S.parked = false; S.resuming = true; S.ready = false;
-  const options = { resume: S.token, length: prefs.length, turn: { seconds: S.turnSeconds, ...body } };
+  const options = { resume: S.token, turn: { seconds: S.turnSeconds, ...body } };
   const job = client.submit("/run_session", { world: "{}", options: JSON.stringify(options) });
   S.job = job;
   consume(job);
@@ -1344,13 +1320,12 @@ function endSession(reason, message, resumable = false, keepMinutes = 15) {
   $("ended-dl").classList.toggle("hidden", !hasVideo);
   $("ended-watch").classList.toggle("hidden", !hasVideo);
   $("ended-keep").classList.toggle("hidden", !S.resumable);
-  if (reason === "time" && S.resumable) { title.textContent = "That's a wrap, for now"; text.textContent = `This GPU session is over, but the world is saved for ${S.keepMinutes} minutes. Keep going and tell the director what happens next; a new GPU session starts only once that shot is planned.`; }
-  else if (reason === "time") { title.textContent = "That's a wrap"; text.textContent = "This world's GPU time is up. Download the journey, rewatch it, or open a new world."; }
-  else if (reason === "busy") { title.textContent = "All GPUs are busy"; text.textContent = (message || "Try again in a minute.") + " Your world is still saved."; }
+  if (reason === "time" && S.resumable) { title.textContent = "That's a wrap, for now"; text.textContent = `This session timed out, but the world is saved for ${S.keepMinutes} minutes. Keep going and tell the director what happens next; a new session starts once that shot is planned.`; }
+  else if (reason === "time") { title.textContent = "That's a wrap"; text.textContent = "This session has ended. Download the journey, rewatch it, or open a new world."; }
+  else if (reason === "busy") { title.textContent = "All session slots are in use"; text.textContent = (message || "Try again in a minute.") + " Your world is still saved."; }
   else if (reason === "error") {
-    const quota = /quota|GPU task|exceeded/i.test(message || "");
-    title.textContent = quota ? "Out of GPU time" : "The world collapsed";
-    text.textContent = quota ? `${message} Try the Quick session, log in, or come back later.` : (message || "Something went wrong on the GPU.") + (S.resumable ? " Your world is still saved, so you can try again." : hasVideo ? " What you made so far is still here." : "");
+    title.textContent = "The world collapsed";
+    text.textContent = (message || "Something went wrong in the session.") + (S.resumable ? " Your world is still saved, so you can try again." : hasVideo ? " What you made so far is still here." : "");
   } else { title.textContent = "Session closed"; text.textContent = hasVideo ? "Download the journey or open a new world." : "The session closed before any frames arrived."; }
   els.forming.classList.add("fade");
   els.ended.classList.remove("hidden");
@@ -1371,7 +1346,7 @@ $("leave").addEventListener("click", () => {
   leave();
 });
 $("home-link").addEventListener("click", (e) => { e.preventDefault(); if (!els.stage.classList.contains("hidden")) $("leave").click(); });
-function confirmLeave() { return S.total === 0 || window.confirm("Leave this world? Its GPU session will end. You can still download it from this page until you start another."); }
+function confirmLeave() { return S.total === 0 || window.confirm("Leave this world? Its session will end. You can still download it from this page until you start another."); }
 function stopRemote() {
   if (S.token && !S.ended) {
     try { navigator.sendBeacon("api/stop", new Blob([JSON.stringify({ token: S.token })], { type: "application/json" })); } catch { }

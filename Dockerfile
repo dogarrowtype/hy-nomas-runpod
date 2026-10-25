@@ -10,8 +10,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # Ubuntu 24.04 ships Python 3.12 by default; the flash-attn wheel in
 # requirements.txt is cp312-only, so the interpreter must be exactly 3.12.
+# build-essential + python3-dev are required at RUNTIME: torch.compile (Inductor)
+# and Triton JIT-compile a C extension (cuda_utils) on the first turn — without
+# a C compiler and Python headers the first generation fails with
+# "Failed to find C compiler".
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip ca-certificates \
+      build-essential python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m venv /opt/venv
