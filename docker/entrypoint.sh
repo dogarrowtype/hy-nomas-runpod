@@ -8,7 +8,7 @@
 #   PE_TURN_MODELS     comma-separated provider model IDs (default in app.py)
 #   NOMAS_RESOLUTION   WIDTHxHEIGHT, default 1280x720 (app reads it directly;
 #                      use 832x480 to fall back to the Space's 480p shapes)
-#   NOMAS_MAX_SESSIONS default 4 (set 1-2 on <64 GB GPUs)
+#   NOMAS_MAX_SESSIONS default 1 — the only safe value (singleton pipeline)
 #   NOMAS_GPU_SIZE     default xlarge (compile-cache selection)
 #   NOMAS_PARK_DIR     world parking dir (default $VOLUME_DIR/park)
 #   NOMAS_DATA_DIR     override the data dir (default: /workspace if mounted)
@@ -31,7 +31,7 @@ log "data dir: ${VOLUME_DIR}"
 export HF_HOME="${HF_HOME:-${VOLUME_DIR}/hf-cache}"
 export NOMAS_PARK_DIR="${NOMAS_PARK_DIR:-${VOLUME_DIR}/park}"
 export NOMAS_GPU_SIZE="${NOMAS_GPU_SIZE:-xlarge}"
-export NOMAS_MAX_SESSIONS="${NOMAS_MAX_SESSIONS:-4}"
+export NOMAS_MAX_SESSIONS="${NOMAS_MAX_SESSIONS:-1}"  # >1 = concurrent slot workers race the singleton pipeline (see app.py note)
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 mkdir -p "${HF_HOME}" "${NOMAS_PARK_DIR}"
 

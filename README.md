@@ -115,7 +115,7 @@ Public package = **no registry credentials** needed in the RunPod template.
 | `PE_OPENING_MODELS` | yes* | Space defaults | Plain provider model IDs for the opening prompt, comma-separated. *The built-in defaults carry HF `:provider` suffixes that break on other providers. |
 | `PE_TURN_MODELS` | yes* | Space defaults | Same, for per-turn enhancement. |
 | `NOMAS_RESOLUTION` | no | `1280x720` | `WIDTHxHEIGHT`. Use `832x480` to restore the Space's shapes (env-only, no rebuild). |
-| `NOMAS_MAX_SESSIONS` | no | `4` | Concurrent world sessions — a VRAM safety cap, not a sharing limit (each live world holds KV cache). Set `1`–`2` on <64 GB GPUs. |
+| `NOMAS_MAX_SESSIONS` | no | `1` | Concurrent world slots. **1 is the only safe value**: the pipeline is a singleton and concurrent slot workers corrupt each other's state (on HF Spaces, ZeroGPU gave each session its own process). Sessions are time-unlimited, so one slot = one world at a time. |
 | `NOMAS_SESSION_SECONDS` | no | `0` (no limit) | Per-world session duration. `0` = a world stays live until you leave/stop it. Set >0 to re-enable time-limited sessions. |
 | `TORCHINDUCTOR_CACHE_DIR` | recommended | — | **Set to `/workspace/inductor-cache`.** There is no bundled compile cache (the Space's 480p/H200 megacache can't hit on sm_120/720p, so it was dropped); persisting Inductor's cache on the volume means only the *very first* turn on a *fresh* volume pays the compile time — pod recreates stay warm. |
 | `HF_TOKEN` | no | — | Only if a weight repo turns out to be gated. |
@@ -162,6 +162,8 @@ optionally bump the digest in the RunPod template.
 
 | Symptom | Fix |
 |---|---|
+| Turn fails: `AttributeError: 'NoneType' object has no attribute 'get'` in `sequence_parallel_attention`, with two worlds open | Two slot workers raced the singleton pipeline. Set `NOMAS_MAX_SESSIONS=1` (the default) — concurrency across threads is architecturally unsupported |
+| Turn fails: `Segment VAE decode failed` / `NVML_SUCCESS … INTERNAL ASSERT FAILED … CUDACachingAllocator` | OOM in disguise (on MIG the allocator can't even report OOM cleanly). 720p peaks >40 GiB on a 48 GB card with a camera turn. Set `NOMAS_MAX_SESSIONS=1` and `NOMAS_RESOLUTION=832x480`, env-only, no rebuild — or move to a full 96 GB card for 720p |
 | Crash loop: `SafetensorError: header too small` right after "already cached — skipping download" | A weight blob on the network volume is truncated (unclean pod stop). The entrypoint now header-validates every cached safetensors and self-repairs (purge + re-download). On older images: delete the repo dir on the volume (`/workspace/hf-cache/hub/models--tencent--Hy-Nomas`) and restart |
 | First turn: `Failed to find C compiler` | Triton/Inductor JIT-builds a C extension at runtime; the image needs `build-essential python3-dev` (present in the current Dockerfile). Rebuild + redeploy |
 | `Temporary failure in name resolution` during weight staging | Pod booted before its network was ready. The entrypoint now waits for `huggingface.co` DNS (~2 min) and retries each download 5× with backoff. If it *still* fails, the pod has no outbound network — restart or redeploy |

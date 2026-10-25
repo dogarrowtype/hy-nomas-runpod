@@ -40,7 +40,12 @@ FPS = 24
 _res = os.environ.get("NOMAS_RESOLUTION", "1280x720").lower().replace("×", "x").split("x")
 WIDTH, HEIGHT = int(_res[0]), int(_res[1])
 GPU_SIZE = os.environ.get("NOMAS_GPU_SIZE", "xlarge")
-MAX_SESSIONS = int(os.environ.get("NOMAS_MAX_SESSIONS", "4"))
+# NOTE: 1 is the only architecturally safe value in a single process. The hymm
+# pipeline is a singleton with per-prompt mutable state (transformer.attn_param,
+# the KV cache, _reset_pipeline) — concurrent slot workers corrupt each other.
+# On HF Spaces this went unnoticed because ZeroGPU isolated each session in its
+# own replica process; this RunPod image runs one pipeline per pod process.
+MAX_SESSIONS = int(os.environ.get("NOMAS_MAX_SESSIONS", "1"))
 SESSION_SECONDS = int(os.environ.get("NOMAS_SESSION_SECONDS", "0"))  # 0 = no time limit; session runs until you leave or stop it
 TURN_SECONDS = (3, 4, 5, 6)
 JPEG_QUALITY = 88
@@ -737,7 +742,7 @@ def run_session(world: str = "{}", options: str = "{}") -> str:
     slot = _claim_slot()
     if slot is None:
         yield json.dumps(
-            {"type": "error", "message": f"All {MAX_SESSIONS} session slots are in use (raise NOMAS_MAX_SESSIONS for more). Try again in a minute."}
+            {"type": "error", "message": f"All {MAX_SESSIONS} session slots are in use. Try again in a minute."}
         )
         return
     token = secrets.token_urlsafe(18)
@@ -789,7 +794,7 @@ def _resume_session(token: str, turn_req: Dict[str, Any], seconds: int):
     slot = _claim_slot()
     if slot is None:
         yield json.dumps({"type": "ended", "reason": "busy", "resumable": True,
-                          "message": f"All {MAX_SESSIONS} session slots are in use (raise NOMAS_MAX_SESSIONS for more). Try again in a minute."})
+                          "message": f"All {MAX_SESSIONS} session slots are in use. Try again in a minute."})
         return
     sess.slot, sess.lease_id, sess.seconds = slot, secrets.token_hex(8), seconds
     sess.alive, sess.ready, sess.finished_at = True, False, None
