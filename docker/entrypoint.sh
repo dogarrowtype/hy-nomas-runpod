@@ -118,39 +118,63 @@ sys.exit(f"ERROR: downloading {repo} failed after 5 attempts.")
 PY
 }
 
-DIT_FILE="DiT/distilled_int8/diffusion_pytorch_model_ema_0_995_int8.safetensors"
-VAE_FILE="VAE/PixelUMM_FT/diffusion_pytorch_model.safetensors"
-
-if python - "${DIT_FILE}" "${VAE_FILE}" <<'PY'
+# Presence is not enough: network volumes can leave a blob truncated after an
+# unclean pod stop ("existing" file, unreadable header → app crash-loop).
+# Validate that every cached .safetensors header actually parses; on failure,
+# purge the repo cache and re-download.
+validate_hub_repo() {
+  # $1 = repo id; exit 0 only if fully cached AND all safetensors headers read
+  python - "$1" <<'PY'
+import pathlib
 import sys
 
-from huggingface_hub import try_to_load_from_cache
+from huggingface_hub.constants import HF_HUB_CACHE
+from safetensors import safe_open
 
-ok = all(isinstance(try_to_load_from_cache("tencent/Hy-Nomas", f), str) for f in sys.argv[1:])
-sys.exit(0 if ok else 1)
+org, name = sys.argv[1].split("/", 1)
+repo_dir = pathlib.Path(HF_HUB_CACHE) / f"models--{org}--{name}"
+snapshots = list((repo_dir / "snapshots").glob("*")) if repo_dir.is_dir() else []
+snap_files = [f for snap in snapshots for f in snap.rglob("*") if f.is_file() or f.is_symlink()]
+safetensors_files = [f for f in snap_files if f.name.endswith(".safetensors")]
+if not snapshots or not safetensors_files:
+    sys.exit(1)
+try:
+    for f in safetensors_files:
+        with safe_open(str(f), framework="pt", device="cpu") as reader:
+            reader.keys()  # forces header parse — catches truncated/corrupt blobs
+except Exception as exc:
+    print(f"[nomas-entrypoint] cached file failed validation: {f.name}: {exc}", flush=True)
+    sys.exit(1)
+sys.exit(0)
 PY
-then
+}
+
+purge_hub_repo() {
+  python - "$1" <<'PY'
+import pathlib
+import shutil
+import sys
+
+from huggingface_hub.constants import HF_HUB_CACHE
+
+org, name = sys.argv[1].split("/", 1)
+shutil.rmtree(pathlib.Path(HF_HUB_CACHE) / f"models--{org}--{name}", ignore_errors=True)
+PY
+}
+
+if validate_hub_repo tencent/Hy-Nomas; then
   log "Hy-Nomas DiT/VAE weights already cached — skipping download"
 else
-  log "downloading Hy-Nomas DiT/VAE weights (first boot on a fresh volume only)"
+  purge_hub_repo tencent/Hy-Nomas
+  log "downloading Hy-Nomas DiT/VAE weights (fresh volume, or cache repair after failed validation)"
   hf_retry tencent/Hy-Nomas "DiT/distilled_int8/*" "VAE/PixelUMM_FT/*"
 fi
 
-if python - <<'PY'
-import sys
-
-from huggingface_hub import try_to_load_from_cache
-
-ok = isinstance(
-    try_to_load_from_cache("Qwen/Qwen2.5-VL-7B-Instruct", "model.safetensors.index.json"),
-    str,
-)
-sys.exit(0 if ok else 1)
-PY
-then
+if validate_hub_repo Qwen/Qwen2.5-VL-7B-Instruct; then
   log "Qwen2.5-VL-7B-Instruct already cached — skipping download"
 else
-  log "downloading Qwen/Qwen2.5-VL-7B-Instruct (first boot on a fresh volume only)"
+  purge_hub_repo Qwen/Qwen2.5-VL-7B-Instruct
+  log "downloading Qwen/Qwen2.5-VL-7B-Instruct (fresh volume, or cache repair after failed validation)"
   hf_retry Qwen/Qwen2.5-VL-7B-Instruct
 fi
 

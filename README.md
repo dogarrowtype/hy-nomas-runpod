@@ -162,6 +162,7 @@ optionally bump the digest in the RunPod template.
 
 | Symptom | Fix |
 |---|---|
+| Crash loop: `SafetensorError: header too small` right after "already cached — skipping download" | A weight blob on the network volume is truncated (unclean pod stop). The entrypoint now header-validates every cached safetensors and self-repairs (purge + re-download). On older images: delete the repo dir on the volume (`/workspace/hf-cache/hub/models--tencent--Hy-Nomas`) and restart |
 | First turn: `Failed to find C compiler` | Triton/Inductor JIT-builds a C extension at runtime; the image needs `build-essential python3-dev` (present in the current Dockerfile). Rebuild + redeploy |
 | `Temporary failure in name resolution` during weight staging | Pod booted before its network was ready. The entrypoint now waits for `huggingface.co` DNS (~2 min) and retries each download 5× with backoff. If it *still* fails, the pod has no outbound network — restart or redeploy |
 | CI fails on `torch==2.11.0` pin | Use newest cu13x torch/torchvision (see step 3) |
