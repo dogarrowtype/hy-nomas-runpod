@@ -1,0 +1,13 @@
+# Keep the build context lean. docker/entrypoint.sh must stay (it's the image
+# entrypoint). No compile_cache/: the bundled 480p/H200 megacache double-misses
+# on the sm_120 target (arch + 720p shapes), so it was dropped from the repo —
+# the app logs "compile cache ...: missing" and compiles on the first turn.
+.git/
+.github/
+.cache/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.dockerignore
+Dockerfile
